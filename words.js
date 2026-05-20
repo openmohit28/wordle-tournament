@@ -1,19 +1,26 @@
 const fs = require('fs');
 const path = require('path');
 
-const raw = fs.readFileSync(path.join(__dirname, 'word_list.txt'), 'utf8');
+function extractArray(src, key) {
+  const start = src.indexOf(`"${key}"`);
+  if (start === -1) return [];
+  const arrStart = src.indexOf('[', start);
+  const arrEnd = src.indexOf(']', arrStart);
+  const content = src.slice(arrStart + 1, arrEnd);
+  return content.match(/"([a-z]+)"/g)?.map(w => w.replace(/"/g, '').toUpperCase()) ?? [];
+}
 
-const VALID_WORDS = [
-  ...new Set(
-    raw.split('\n')
-      .map(w => w.trim().toUpperCase())
-      .filter(w => w.length === 5 && /^[A-Z]+$/.test(w))
-  ),
-];
+const src = fs.readFileSync(path.join(__dirname, 'word_list.js'), 'utf8');
+
+// Answer pool — common recognizable words, used as the round target
+const ANSWER_WORDS = extractArray(src, 'words');
+
+// Full valid guess list — answers + extended valid words
+const VALID_WORDS = [...new Set([...ANSWER_WORDS, ...extractArray(src, 'valid')])];
 
 function getRandomWord(used = []) {
-  const available = VALID_WORDS.filter(w => !used.includes(w));
-  const pool = available.length > 0 ? available : VALID_WORDS;
+  const available = ANSWER_WORDS.filter(w => !used.includes(w));
+  const pool = available.length > 0 ? available : ANSWER_WORDS;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 

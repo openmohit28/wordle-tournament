@@ -42,6 +42,11 @@ function playerName(room, id) {
   return room.players.find(p => p.id === id)?.name || '?';
 }
 
+// 1st try = 6pts, 6th try = 1pt, unsolved/timeout = 0pts
+function calcPoints(solved, tries) {
+  return solved ? Math.max(0, 7 - tries) : 0;
+}
+
 // ─── Round management ────────────────────────────────────────────────────────
 
 function startRound(room) {
@@ -101,8 +106,8 @@ function endRound(room) {
   const players = activePlayers(room);
   const results = players.map(id => {
     const s = room.playerStates[id];
-    const scoreTries = s.solved ? s.tries : 8;
-    return { playerId: id, name: playerName(room, id), solved: s.solved, tries: s.tries, scoreTries, solveTimeMs: s.solveTimeMs, timedOut: !!s.timedOut };
+    const scorePoints = calcPoints(s.solved, s.tries);
+    return { playerId: id, name: playerName(room, id), solved: s.solved, tries: s.tries, scorePoints, solveTimeMs: s.solveTimeMs, timedOut: !!s.timedOut };
   });
 
   io.to(room.code).emit('round_ended', { word: room.currentWord, results });
@@ -118,7 +123,7 @@ function endRound(room) {
 
 function processGroupEnd(room, results) {
   for (const r of results) {
-    room.groupScores[r.playerId] = (room.groupScores[r.playerId] || 0) + r.scoreTries;
+    room.groupScores[r.playerId] = (room.groupScores[r.playerId] || 0) + r.scorePoints;
     const p = room.players.find(p => p.id === r.playerId);
     if (p) p.groupScore = room.groupScores[r.playerId];
   }
@@ -127,7 +132,7 @@ function processGroupEnd(room, results) {
 
   const standings = Object.entries(room.groupScores)
     .map(([id, score]) => ({ id, name: playerName(room, id), score }))
-    .sort((a, b) => a.score - b.score);
+    .sort((a, b) => b.score - a.score); // higher points = better
 
   io.to(room.code).emit('group_standings', { standings, round: room.groupRound, totalRounds: 4 });
 
@@ -192,32 +197,32 @@ function processElimEnd(room, results) {
 
 function resolveElimination(results, activePlayers, confirmedFinalists) {
   const neededFinalists = 2 - confirmedFinalists.length;
-  const solved = results.filter(r => r.solved);
-  const failed = results.filter(r => !r.solved);
+  const scored = results.filter(r => r.scorePoints > 0);  // solved
+  const zero   = results.filter(r => r.scorePoints === 0); // failed / timed out
 
-  // Everyone failed — no elimination
-  if (solved.length === 0) {
+  // Everyone scored 0 — no elimination
+  if (scored.length === 0) {
     return { newActive: activePlayers, newFinalists: confirmedFinalists, eliminated: [] };
   }
 
-  if (failed.length > 0) {
-    if (solved.length >= neededFinalists) {
-      // Take the best N solvers, eliminate the rest
-      solved.sort((a, b) => a.tries - b.tries);
-      const advancing = solved.slice(0, neededFinalists).map(r => r.playerId);
-      const eliminated = [...solved.slice(neededFinalists).map(r => r.playerId), ...failed.map(r => r.playerId)];
+  if (zero.length > 0) {
+    if (scored.length >= neededFinalists) {
+      // Take top N by points, eliminate the rest
+      scored.sort((a, b) => b.scorePoints - a.scorePoints);
+      const advancing = scored.slice(0, neededFinalists).map(r => r.playerId);
+      const eliminated = [...scored.slice(neededFinalists).map(r => r.playerId), ...zero.map(r => r.playerId)];
       return { newActive: [], newFinalists: [...confirmedFinalists, ...advancing], eliminated };
     } else {
-      // Fewer solvers than needed — all solvers become confirmed, failed keep competing
-      const newConfirmed = [...confirmedFinalists, ...solved.map(r => r.playerId)];
-      return { newActive: failed.map(r => r.playerId), newFinalists: newConfirmed, eliminated: [] };
+      // All solvers become confirmed finalists, zero-scorers keep competing
+      const newConfirmed = [...confirmedFinalists, ...scored.map(r => r.playerId)];
+      return { newActive: zero.map(r => r.playerId), newFinalists: newConfirmed, eliminated: [] };
     }
   }
 
-  // Everyone solved — eliminate the one(s) with most tries
-  const maxTries = Math.max(...results.map(r => r.tries));
-  const highest = results.filter(r => r.tries === maxTries);
-  const rest = results.filter(r => r.tries < maxTries);
+  // Everyone solved — eliminate the one(s) with lowest points
+  const minPoints = Math.min(...results.map(r => r.scorePoints));
+  const lowest = results.filter(r => r.scorePoints === minPoints);
+  const rest   = results.filter(r => r.scorePoints > minPoints);
 
   if (rest.length === 0) {
     // All tied — no elimination
@@ -225,11 +230,10 @@ function resolveElimination(results, activePlayers, confirmedFinalists) {
   }
 
   if (rest.length >= neededFinalists) {
-    return { newActive: rest.map(r => r.playerId), newFinalists: confirmedFinalists, eliminated: highest.map(r => r.playerId) };
+    return { newActive: rest.map(r => r.playerId), newFinalists: confirmedFinalists, eliminated: lowest.map(r => r.playerId) };
   } else {
-    // Fewer lower-scorers than needed — rest are confirmed, highest tries compete for remaining spots
     const newConfirmed = [...confirmedFinalists, ...rest.map(r => r.playerId)];
-    return { newActive: highest.map(r => r.playerId), newFinalists: newConfirmed, eliminated: [] };
+    return { newActive: lowest.map(r => r.playerId), newFinalists: newConfirmed, eliminated: [] };
   }
 }
 
@@ -266,9 +270,9 @@ function processFinalsEnd(room, results) {
     }
   } else {
     for (const r of results) {
-      room.finals.scores[r.playerId] += r.scoreTries;
+      room.finals.scores[r.playerId] += r.scorePoints;
     }
-    room.finals.roundScores.push(results.map(r => ({ id: r.playerId, score: r.scoreTries, solved: r.solved })));
+    room.finals.roundScores.push(results.map(r => ({ id: r.playerId, score: r.scorePoints, solved: r.solved })));
 
     io.to(room.code).emit('finals_round_scored', {
       round: room.finals.round + 1,
@@ -282,7 +286,7 @@ function processFinalsEnd(room, results) {
     if (room.finals.round >= 3) {
       const [id1, id2] = room.finals.players;
       if (room.finals.scores[id1] !== room.finals.scores[id2]) {
-        const winnerId = room.finals.scores[id1] < room.finals.scores[id2] ? id1 : id2;
+        const winnerId = room.finals.scores[id1] > room.finals.scores[id2] ? id1 : id2; // higher pts wins
         setTimeout(() => endTournament(room, winnerId), 4000);
       } else {
         io.to(room.code).emit('sudden_death_start', {
@@ -298,15 +302,17 @@ function processFinalsEnd(room, results) {
 }
 
 function resolveSuddenDeath(r1, r2) {
-  if (r1.solved && r2.solved) {
-    if (r1.tries !== r2.tries) return r1.tries < r2.tries ? r1.playerId : r2.playerId;
-    if (r1.solveTimeMs !== null && r2.solveTimeMs !== null && r1.solveTimeMs !== r2.solveTimeMs) {
+  if (r1.scorePoints > 0 && r2.scorePoints > 0) {
+    // Both solved — higher points (fewer tries) wins
+    if (r1.scorePoints !== r2.scorePoints)
+      return r1.scorePoints > r2.scorePoints ? r1.playerId : r2.playerId;
+    // Same points = same number of tries — faster time wins
+    if (r1.solveTimeMs !== null && r2.solveTimeMs !== null && r1.solveTimeMs !== r2.solveTimeMs)
       return r1.solveTimeMs < r2.solveTimeMs ? r1.playerId : r2.playerId;
-    }
     return null; // true tie, play again
   }
-  if (r1.solved) return r1.playerId;
-  if (r2.solved) return r2.playerId;
+  if (r1.scorePoints > 0) return r1.playerId;
+  if (r2.scorePoints > 0) return r2.playerId;
   return null; // both failed, play again
 }
 
@@ -406,16 +412,23 @@ io.on('connection', socket => {
     if (room.players.length < 2) return socket.emit('error', { message: 'Need at least 2 players' });
     if (room.phase !== 'lobby') return;
 
-    room.phase = 'group_stage';
-    room.groupRound = 0;
-    room.groupScores = {};
-    for (const p of room.players) room.groupScores[p.id] = 0;
+    const directFinals = room.players.length === 2;
 
     io.to(room.code).emit('tournament_started', {
       players: room.players.map(p => ({ id: p.id, name: p.name })),
+      directFinals,
     });
 
-    setTimeout(() => startRound(room), 2000);
+    if (directFinals) {
+      // 2 players — skip group stage and elimination, go straight to finals
+      setTimeout(() => startFinals(room, room.players.map(p => p.id)), 2000);
+    } else {
+      room.phase = 'group_stage';
+      room.groupRound = 0;
+      room.groupScores = {};
+      for (const p of room.players) room.groupScores[p.id] = 0;
+      setTimeout(() => startRound(room), 2000);
+    }
   });
 
   socket.on('submit_guess', ({ guess }) => {

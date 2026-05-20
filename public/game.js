@@ -101,14 +101,7 @@ function renderLobby(players, code, isAdmin) {
     document.getElementById('guest-waiting').classList.add('hidden');
     const canStart = players.length >= 2;
     document.getElementById('btn-start').disabled = !canStart;
-    const hint = document.getElementById('start-hint');
-    if (canStart) {
-      hint.textContent = `${players.length} players ready — you can start!`;
-      hint.classList.add('ready');
-    } else {
-      hint.textContent = 'Waiting for more players to join…';
-      hint.classList.remove('ready');
-    }
+    updateStartHint(players.length);
   } else {
     document.getElementById('admin-settings').classList.add('hidden');
     document.getElementById('guest-waiting').classList.remove('hidden');
@@ -357,13 +350,13 @@ function showRoundResult({ word, results, eliminated, confirmedFinalists, nextIn
   document.getElementById('result-header').textContent = header || 'Round Over';
   document.getElementById('result-word').innerHTML = `The word was<strong>${word}</strong>`;
 
-  const sorted = [...results].sort((a, b) => a.scoreTries - b.scoreTries);
+  const sorted = [...results].sort((a, b) => b.scorePoints - a.scorePoints); // higher pts = better
   document.getElementById('result-list').innerHTML = sorted.map((r, i) => `
     <div class="result-row">
       <div class="result-rank">${['🥇','🥈','🥉'][i] || (i + 1)}</div>
       <div class="result-name">${escHtml(r.name)}${r.playerId === S.playerId ? ' <small>(you)</small>' : ''}</div>
-      <div class="result-tries">${r.solved ? r.tries + ' tries' : 'failed'}</div>
-      <div class="result-badge ${r.solved ? 'badge-solved' : 'badge-failed'}">${r.solved ? '✓' : '✗'}</div>
+      <div class="result-tries">${r.scorePoints > 0 ? `${r.scorePoints} pts (try ${r.tries})` : '0 pts'}</div>
+      <div class="result-badge ${r.scorePoints > 0 ? 'badge-solved' : 'badge-failed'}">${r.scorePoints > 0 ? '✓' : '✗'}</div>
     </div>`).join('');
 
   let elimHtml = '';
@@ -422,16 +415,8 @@ function initSocket() {
         return `<li>${badges.join('')} ${escHtml(p.name)}</li>`;
       }).join('');
       if (S.isAdmin) {
-        const canStart = data.players.length >= 2;
-        document.getElementById('btn-start').disabled = !canStart;
-        const hint = document.getElementById('start-hint');
-        if (canStart) {
-          hint.textContent = `${data.players.length} players ready — you can start!`;
-          hint.classList.add('ready');
-        } else {
-          hint.textContent = 'Waiting for more players to join…';
-          hint.classList.remove('ready');
-        }
+        document.getElementById('btn-start').disabled = data.players.length < 2;
+        updateStartHint(data.players.length);
       }
     }
   });
@@ -444,10 +429,11 @@ function initSocket() {
     }
   });
 
-  S.socket.on('tournament_started', () => {
+  S.socket.on('tournament_started', data => {
     showScreen('screen-game');
     resetBoard();
     resetSidebar();
+    if (data.directFinals) toast('2 players — going straight to Finals!', 3000);
   });
 
   S.socket.on('round_started', data => {
@@ -516,7 +502,8 @@ function initSocket() {
   });
 
   S.socket.on('player_solved', data => {
-    if (data.playerId !== S.playerId) toast(`${data.name} solved it in ${data.tries}!`);
+    const pts = Math.max(0, 7 - data.tries);
+    if (data.playerId !== S.playerId) toast(`${data.name} solved it! +${pts} pts`);
   });
 
   S.socket.on('round_ended', data => {
@@ -649,6 +636,21 @@ function showFinalsScore(data) {
 }
 
 /* ── Utility ─────────────────────────────────────────────────────── */
+function updateStartHint(count) {
+  const hint = document.getElementById('start-hint');
+  if (!hint) return;
+  if (count < 2) {
+    hint.textContent = 'Waiting for more players to join…';
+    hint.classList.remove('ready');
+  } else if (count === 2) {
+    hint.textContent = '2 players — goes straight to Finals (3 rounds)';
+    hint.classList.add('ready');
+  } else {
+    hint.textContent = `${count} players ready — Group Stage → Elimination → Finals`;
+    hint.classList.add('ready');
+  }
+}
+
 function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
