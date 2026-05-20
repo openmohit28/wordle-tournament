@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle Tournament</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── Home ── -->
+  <div id="screen-home" class="screen active">
+    <div class="home-card">
+      <div class="logo">
+        <span class="logo-tile c">W</span><span class="logo-tile p">O</span><span class="logo-tile a">R</span><span class="logo-tile c">D</span><span class="logo-tile p">L</span><span class="logo-tile a">E</span>
+      </div>
+      <p class="subtitle">TOURNAMENT</p>
+
+      <input id="home-name" type="text" placeholder="Your name" maxlength="20" autocomplete="off" />
+
+      <div class="home-actions">
+        <button id="btn-create" class="btn-primary">Create Room</button>
+        <div class="divider">or</div>
+        <div class="join-row">
+          <input id="home-code" type="text" placeholder="Room code" maxlength="6" autocomplete="off" />
+          <button id="btn-join" class="btn-secondary">Join</button>
+        </div>
+      </div>
+      <p id="home-error" class="error-msg"></p>
+    </div>
+  </div>
+
+  <!-- ── Lobby ── -->
+  <div id="screen-lobby" class="screen">
+    <div class="lobby-card">
+      <div class="lobby-header">
+        <h2>Waiting Room</h2>
+        <div class="room-code-display">
+          <span class="code-label">ROOM CODE</span>
+          <span id="lobby-code" class="code-value"></span>
+          <button id="btn-copy" class="btn-icon" title="Copy code">⎘</button>
+        </div>
+      </div>
+
+      <div class="lobby-players">
+        <h3>Players <span id="player-count">0</span></h3>
+        <ul id="player-list"></ul>
+      </div>
+
+      <div id="admin-settings" class="admin-settings hidden">
+        <h3>Settings</h3>
+        <label>
+          Round Timer
+          <div class="slider-row">
+            <input id="timer-slider" type="range" min="30" max="300" step="10" value="120" />
+            <span id="timer-display">120s</span>
+          </div>
+        </label>
+        <button id="btn-start" class="btn-primary btn-start" disabled>Start Tournament</button>
+        <p id="start-hint" class="start-hint">Waiting for more players to join…</p>
+        <p id="lobby-error" class="error-msg"></p>
+      </div>
+
+      <div id="guest-waiting" class="guest-waiting hidden">
+        <div class="spinner"></div>
+        <p>Waiting for admin to start…</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Game ── -->
+  <div id="screen-game" class="screen">
+    <header class="game-header">
+      <div class="phase-badge" id="phase-badge"></div>
+      <div class="timer-box">
+        <div id="timer-bar" class="timer-bar"><div id="timer-fill"></div></div>
+        <span id="timer-text">0:00</span>
+      </div>
+    </header>
+
+    <div class="game-body">
+      <div class="board-area">
+        <div id="board" class="board"></div>
+        <div id="board-msg" class="board-msg"></div>
+      </div>
+
+      <aside class="sidebar">
+        <h3 id="sidebar-title">Players</h3>
+        <ul id="sidebar-players"></ul>
+      </aside>
+    </div>
+
+    <div id="keyboard" class="keyboard">
+      <div class="kb-row" id="kb-row-1"></div>
+      <div class="kb-row" id="kb-row-2"></div>
+      <div class="kb-row" id="kb-row-3"></div>
+    </div>
+  </div>
+
+  <!-- ── Round Result ── -->
+  <div id="screen-round-result" class="screen">
+    <div class="result-card">
+      <div id="result-header" class="result-header"></div>
+      <div id="result-word" class="result-word"></div>
+      <div id="result-list" class="result-list"></div>
+      <div id="result-elim" class="result-elim"></div>
+      <div id="result-next" class="result-next"></div>
+    </div>
+  </div>
+
+  <!-- ── Finals Scoreboard ── -->
+  <div id="screen-finals-score" class="screen">
+    <div class="result-card">
+      <div class="result-header">Finals Score</div>
+      <div id="finals-score-body"></div>
+      <div id="finals-next-info" class="result-next"></div>
+    </div>
+  </div>
+
+  <!-- ── Winner ── -->
+  <div id="screen-winner" class="screen">
+    <div class="winner-card">
+      <div class="trophy">🏆</div>
+      <h1 id="winner-name"></h1>
+      <p class="winner-sub">Tournament Champion</p>
+      <div id="winner-scores"></div>
+      <button id="btn-play-again" class="btn-primary">Back to Home</button>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div id="toast" class="toast"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
